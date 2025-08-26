@@ -1,0 +1,675 @@
+openapi: 3.0.3
+info:
+  title: Payment Service API
+  description: Microservice for processing payments and managing payment methods
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@example.com
+
+servers:
+  - url: https://api.example.com/payments/v1
+    description: Production server
+  - url: https://staging-api.example.com/payments/v1
+    description: Staging server
+
+paths:
+  /payment-methods:
+    get:
+      summary: List payment methods
+      description: Retrieve all payment methods for the authenticated user
+      tags:
+        - Payment Methods
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          description: Number of items to return
+          schema:
+            type: integer
+            default: 10
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          description: Number of items to skip
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        '200':
+          description: Payment methods retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PaymentMethod'
+                  total:
+                    type: integer
+                    example: 3
+                  limit:
+                    type: integer
+                    example: 10
+                  offset:
+                    type: integer
+                    example: 0
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      summary: Add payment method
+      description: Add a new payment method for the authenticated user
+      tags:
+        - Payment Methods
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePaymentMethodRequest'
+      responses:
+        '201':
+          description: Payment method added successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentMethod'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /payment-methods/{paymentMethodId}:
+    get:
+      summary: Get payment method
+      description: Retrieve a specific payment method by ID
+      tags:
+        - Payment Methods
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: paymentMethodId
+          in: path
+          required: true
+          description: Payment method ID
+          schema:
+            type: string
+            example: "pm_12345"
+      responses:
+        '200':
+          description: Payment method retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentMethod'
+        '404':
+          description: Payment method not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      summary: Delete payment method
+      description: Remove a payment method
+      tags:
+        - Payment Methods
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: paymentMethodId
+          in: path
+          required: true
+          description: Payment method ID
+          schema:
+            type: string
+            example: "pm_12345"
+      responses:
+        '200':
+          description: Payment method deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Payment method deleted successfully
+        '404':
+          description: Payment method not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /payments:
+    get:
+      summary: List payments
+      description: Retrieve payment history for the authenticated user
+      tags:
+        - Payments
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          description: Number of items to return
+          schema:
+            type: integer
+            default: 10
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          description: Number of items to skip
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+        - name: status
+          in: query
+          description: Filter by payment status
+          schema:
+            type: string
+            enum: [pending, completed, failed, refunded]
+        - name: startDate
+          in: query
+          description: Filter payments from this date
+          schema:
+            type: string
+            format: date
+            example: "2024-01-01"
+        - name: endDate
+          in: query
+          description: Filter payments until this date
+          schema:
+            type: string
+            format: date
+            example: "2024-12-31"
+      responses:
+        '200':
+          description: Payments retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Payment'
+                  total:
+                    type: integer
+                    example: 25
+                  limit:
+                    type: integer
+                    example: 10
+                  offset:
+                    type: integer
+                    example: 0
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      summary: Create payment
+      description: Process a new payment
+      tags:
+        - Payments
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePaymentRequest'
+      responses:
+        '201':
+          description: Payment created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '402':
+          description: Payment required or insufficient funds
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /payments/{paymentId}:
+    get:
+      summary: Get payment
+      description: Retrieve a specific payment by ID
+      tags:
+        - Payments
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: paymentId
+          in: path
+          required: true
+          description: Payment ID
+          schema:
+            type: string
+            example: "pay_12345"
+      responses:
+        '200':
+          description: Payment retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+        '404':
+          description: Payment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /payments/{paymentId}/refund:
+    post:
+      summary: Refund payment
+      description: Process a refund for a completed payment
+      tags:
+        - Payments
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: paymentId
+          in: path
+          required: true
+          description: Payment ID to refund
+          schema:
+            type: string
+            example: "pay_12345"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  type: number
+                  format: float
+                  description: Amount to refund (optional, defaults to full amount)
+                  example: 50.00
+                reason:
+                  type: string
+                  description: Reason for refund
+                  example: "Customer request"
+      responses:
+        '200':
+          description: Refund processed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Refund'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Payment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /webhooks/payment-status:
+    post:
+      summary: Payment status webhook
+      description: Receive payment status updates from payment processors
+      tags:
+        - Webhooks
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookPayload'
+      responses:
+        '200':
+          description: Webhook processed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  received:
+                    type: boolean
+                    example: true
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    PaymentMethod:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "pm_12345"
+        type:
+          type: string
+          enum: [card, bank_account, digital_wallet]
+          example: "card"
+        card:
+          $ref: '#/components/schemas/Card'
+        bankAccount:
+          $ref: '#/components/schemas/BankAccount'
+        digitalWallet:
+          $ref: '#/components/schemas/DigitalWallet'
+        isDefault:
+          type: boolean
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+
+    Card:
+      type: object
+      properties:
+        last4:
+          type: string
+          example: "4242"
+        brand:
+          type: string
+          example: "visa"
+        expMonth:
+          type: integer
+          example: 12
+        expYear:
+          type: integer
+          example: 2025
+        fingerprint:
+          type: string
+          example: "Xt5EWLLDS7FJjR1c"
+
+    BankAccount:
+      type: object
+      properties:
+        last4:
+          type: string
+          example: "6789"
+        bankName:
+          type: string
+          example: "Chase Bank"
+        accountType:
+          type: string
+          enum: [checking, savings]
+          example: "checking"
+
+    DigitalWallet:
+      type: object
+      properties:
+        provider:
+          type: string
+          enum: [paypal, apple_pay, google_pay]
+          example: "paypal"
+        email:
+          type: string
+          format: email
+          example: "user@paypal.com"
+
+    CreatePaymentMethodRequest:
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum: [card, bank_account, digital_wallet]
+          example: "card"
+        card:
+          type: object
+          properties:
+            number:
+              type: string
+              example: "4242424242424242"
+            expMonth:
+              type: integer
+              example: 12
+            expYear:
+              type: integer
+              example: 2025
+            cvc:
+              type: string
+              example: "123"
+        bankAccount:
+          type: object
+          properties:
+            accountNumber:
+              type: string
+              example: "123456789"
+            routingNumber:
+              type: string
+              example: "021000021"
+            accountType:
+              type: string
+              enum: [checking, savings]
+              example: "checking"
+        digitalWallet:
+          type: object
+          properties:
+            provider:
+              type: string
+              enum: [paypal, apple_pay, google_pay]
+              example: "paypal"
+            email:
+              type: string
+              format: email
+              example: "user@paypal.com"
+        isDefault:
+          type: boolean
+          example: false
+
+    Payment:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "pay_12345"
+        amount:
+          type: number
+          format: float
+          example: 99.99
+        currency:
+          type: string
+          example: "USD"
+        status:
+          type: string
+          enum: [pending, completed, failed, refunded]
+          example: "completed"
+        paymentMethodId:
+          type: string
+          example: "pm_12345"
+        description:
+          type: string
+          example: "Payment for order #12345"
+        metadata:
+          type: object
+          additionalProperties: true
+          example:
+            orderId: "12345"
+            customerId: "cust_67890"
+        createdAt:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+        completedAt:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:01:00Z"
+
+    CreatePaymentRequest:
+      type: object
+      required:
+        - amount
+        - currency
+        - paymentMethodId
+      properties:
+        amount:
+          type: number
+          format: float
+          minimum: 0.01
+          example: 99.99
+        currency:
+          type: string
+          example: "USD"
+        paymentMethodId:
+          type: string
+          example: "pm_12345"
+        description:
+          type: string
+          example: "Payment for order #12345"
+        metadata:
+          type: object
+          additionalProperties: true
+          example:
+            orderId: "12345"
+            customerId: "cust_67890"
+        confirmationRequired:
+          type: boolean
+          example: false
+
+    Refund:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "ref_12345"
+        paymentId:
+          type: string
+          example: "pay_12345"
+        amount:
+          type: number
+          format: float
+          example: 50.00
+        currency:
+          type: string
+          example: "USD"
+        reason:
+          type: string
+          example: "Customer request"
+        status:
+          type: string
+          enum: [pending, completed, failed]
+          example: "completed"
+        createdAt:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+
+    WebhookPayload:
+      type: object
+      properties:
+        eventType:
+          type: string
+          enum: [payment.completed, payment.failed, payment.refunded]
+          example: "payment.completed"
+        paymentId:
+          type: string
+          example: "pay_12345"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-01-01T00:00:00Z"
+        data:
+          type: object
+          additionalProperties: true
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Payment failed"
+        message:
+          type: string
+          example: "Insufficient funds in the account"
+        code:
+          type: string
+          example: "PAY_001"
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+tags:
+  - name: Payment Methods
+    description: Manage user payment methods
+  - name: Payments
+    description: Process and manage payments
+  - name: Webhooks
+    description: Payment status webhooks
