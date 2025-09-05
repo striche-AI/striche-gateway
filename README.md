@@ -75,7 +75,7 @@ You can run the CLI directly from the source (useful during development):
 ### generate (multiple specs)
 ```bash
 npx ts-node src/cli.ts generate \
-  -s ./example/auth.yaml -s ./example/payment.yaml \
+  -s ./example/auth.yaml \
   -o ./out \
   --templates ./templates \
   --service-map '{"auth":"https://api.example.com/auth/v1","payments":"https://api.example.com/payments/v1"}'
