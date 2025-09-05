@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import path from "path";
-import { validateSpecFile as validateSpec} from "./index";
-import { generateFromSpec } from "./index";
+import fs from "fs-extra";
+import { generateFromSpec } from "./commands/generate";
 import { logger } from "./utils/logger";
 
 const program = new Command();
@@ -15,19 +15,41 @@ program
 program
   .command("generate")
   .description("Generate Terraform configuration from an OpenAPI spec")
-  .requiredOption("-s, --spec <path>", "Path to OpenAPI/Swagger file (yaml|json)")
+  .requiredOption("-s, --spec <path...>", "Path to one or more OpenAPI/Swagger files (yaml|json). Repeatable.")
   .requiredOption("-o, --out <dir>", "Output directory for generated Terraform")
-  .option("-t, --templates <dir>", "Templates directory", path.resolve(process.cwd(), "templates"))
-  .option("--service-map <json>", "JSON map of first-path-segment -> upstream URL")
+  .option("-t, --templates <dir>", "Templates directory (optional)")
+  .option("--service-map <json>", "JSON map of service-name -> upstream URL")
+  .option("-u, --upstream <url>", "Global upstream URL that overrides spec values (applies to all services)")
+  .option("-f, --force", "Overwrite output directory if exists", false)
   .action(async (opts) => {
     try {
+      // parse flags
+      const specs: string[] = Array.isArray(opts.spec) ? opts.spec : [opts.spec];
+      const outDir = opts.out;
+      const force = !!opts.force;
+      const cliUpstream: string | undefined = opts.upstream;
       const serviceMap = opts.serviceMap ? JSON.parse(opts.serviceMap) : undefined;
+
+      // templates fallback: explicit -> ./templates in cwd -> bundled templates
+      let templateDir: string;
+      if (opts.templates) {
+        templateDir = path.resolve(opts.templates);
+      } else {
+        const cwdTemplates = path.resolve(process.cwd(), "templates");
+        if (await fs.pathExists(cwdTemplates)) templateDir = cwdTemplates;
+        else templateDir = path.resolve(__dirname, "../templates");
+      }
+
+      // call generator
       const res = await generateFromSpec({
-        specPath: opts.spec,
-        outDir: opts.out,
-        templateDir: opts.templates,
+        specPaths: specs,
+        outDir,
+        templateDir,
         serviceMap,
+        cliUpstream,
+        force,
       });
+
       logger.info(`Generated to ${res.outDir}`);
       logger.info(`Services: ${res.services.join(", ")}`);
     } catch (err: any) {
@@ -41,15 +63,12 @@ program
   .description("Validate an OpenAPI / Swagger spec")
   .requiredOption("-s, --spec <path>", "Path to OpenAPI/Swagger file")
   .action(async (opts) => {
+    const { validateSpec } = await import("./commands/validate");
     try {
-      const res = await validateSpec(opts.spec);
-      logger.info("Spec is valid.");
-      if (res.warnings && res.warnings.length) {
-        logger.warn("Warnings:");
-        res.warnings.forEach((w: string) => logger.warn("  " + w));
-      }
+      const result = await validateSpec(opts.spec);
+      if (!result.valid) process.exit(2);
     } catch (err: any) {
-      logger.error("Validation failed: " + (err.message || String(err)));
+      console.error(err);
       process.exit(1);
     }
   });

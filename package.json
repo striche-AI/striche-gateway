@@ -1,14 +1,16 @@
 {
-  "name": "api-gatewy",
+  "name": "api-gateway",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "tsc",
+    "start": "ts-node src/index.ts"
   },
   "keywords": [],
-  "author": "",
+  "author": "Josiah Ben",
   "license": "ISC",
-  "description": "",
+  "description": "Generate Terraform config from OpenAPI/Swagger specs",
   "dependencies": {
     "@apidevtools/swagger-parser": "^12.0.0",
     "commander": "^13.1.0",

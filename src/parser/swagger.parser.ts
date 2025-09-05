@@ -202,14 +202,6 @@ export async function parseSpecAndGetOperations(specPath: string) {
   return { normalized, operations };
 }
 
-/* Example usage:
-(async () => {
-  const { normalized, operations } = await parseSpecAndGetOperations("example/swagger.yaml");
-  console.log(normalized.servers);
-  console.log(operations.map(o => `${o.method} ${o.path}`));
-})();
-*/
-
 export default {
   parseAndNormalizeSpec,
   extractOperations,
