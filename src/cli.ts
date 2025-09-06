@@ -21,6 +21,8 @@ program
   .option("--service-map <json>", "JSON map of service-name -> upstream URL")
   .option("-u, --upstream <url>", "Global upstream URL that overrides spec values (applies to all services)")
   .option("-f, --force", "Overwrite output directory if exists", false)
+  .option("--unified", "Deploy as unified gateway (single endpoint) instead of separate services", true)
+  .option("--separate", "Deploy as separate services (multiple endpoints)", false)
   .action(async (opts) => {
     try {
       // parse flags
@@ -29,6 +31,7 @@ program
       const force = !!opts.force;
       const cliUpstream: string | undefined = opts.upstream;
       const serviceMap = opts.serviceMap ? JSON.parse(opts.serviceMap) : undefined;
+      const unified = opts.separate ? false : true; // default to unified unless --separate is specified
 
       // templates fallback: explicit -> ./templates in cwd -> bundled templates
       let templateDir: string;
@@ -48,6 +51,7 @@ program
         serviceMap,
         cliUpstream,
         force,
+        unified,
       });
 
       logger.info(`Generated to ${res.outDir}`);

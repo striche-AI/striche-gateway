@@ -56,7 +56,7 @@ ${YELLOW}COMMANDS:${NC}
     ${GREEN}clean${NC}             Clean generated files
 
 ${YELLOW}OPTIONS:${NC}
-    -s, --spec <file>         OpenAPI spec file (required for most commands)
+    -s, --spec <file>         OpenAPI spec file (repeatable for multiple specs)
     -o, --out <dir>           Output directory (default: ${DEFAULT_OUT_DIR})
     -t, --templates <dir>     Templates directory (default: ${DEFAULT_TEMPLATES_DIR})
     -p, --platform <name>     Cloud platform: aws, gcp, azure (default: ${DEFAULT_PLATFORM})
@@ -75,7 +75,7 @@ ${YELLOW}EXAMPLES:${NC}
     ./striche.sh validate -s specs/payment-service.yaml
     ./striche.sh generate -s specs/payment-service.yaml -p aws
     ./striche.sh deploy -s specs/payment-service.yaml -p aws --auto-approve
-    ./striche.sh deploy -s specs/payment-service.yaml -p gcp -r us-central1
+    ./striche.sh deploy -s specs/auth-service.yaml -s specs/payment-service.yaml --service-map '{"auth":"https://auth.company.com","payments":"https://payments.company.com"}'
     ./striche.sh test -s specs/payment-service.yaml
     ./striche.sh setup-cloud -p aws
 
@@ -299,32 +299,48 @@ EOF
 }
 
 validate_spec() {
-    local spec_file="$1"
+    local spec_files=("$@")
     
-    if [ ! -f "$spec_file" ]; then
-        log_error "Spec file not found: $spec_file"
+    if [ ${#spec_files[@]} -eq 0 ]; then
+        log_error "No spec files provided"
         exit 1
     fi
     
-    log_info "Validating OpenAPI spec: $spec_file"
-    npx ts-node src/cli.ts validate -s "$spec_file"
-    log_success "Spec validation completed"
+    for spec_file in "${spec_files[@]}"; do
+        if [ ! -f "$spec_file" ]; then
+            log_error "Spec file not found: $spec_file"
+            exit 1
+        fi
+        
+        log_info "Validating OpenAPI spec: $spec_file"
+        npx ts-node src/cli.ts validate -s "$spec_file"
+    done
+    log_success "Spec validation completed for all files"
 }
 
 generate_infrastructure() {
-    local spec_file="$1"
-    local out_dir="$2"
-    local templates_dir="$3"
-    local platform="$4"
-    local upstream="$5"
-    local service_map="$6"
+    local out_dir="$1"
+    local templates_dir="$2"
+    local platform="$3"
+    local upstream="$4"
+    local service_map="$5"
+    shift 5
+    local spec_files=("$@")
     
-    if [ ! -f "$spec_file" ]; then
-        log_error "Spec file not found: $spec_file"
+    if [ ${#spec_files[@]} -eq 0 ]; then
+        log_error "No spec files provided"
         exit 1
     fi
     
-    log_info "Generating $platform infrastructure from: $spec_file"
+    # Check all spec files exist
+    for spec_file in "${spec_files[@]}"; do
+        if [ ! -f "$spec_file" ]; then
+            log_error "Spec file not found: $spec_file"
+            exit 1
+        fi
+    done
+    
+    log_info "Generating $platform infrastructure from: ${spec_files[*]}"
     
     # Use platform-specific templates if they exist
     local platform_templates="$templates_dir/$platform"
@@ -335,7 +351,12 @@ generate_infrastructure() {
         log_info "Using generic templates: $templates_dir"
     fi
     
-    local cmd="npx ts-node src/cli.ts generate -s $spec_file -o $out_dir --templates $templates_dir --force"
+    # Build command with multiple spec files
+    local cmd="npx ts-node src/cli.ts generate"
+    for spec_file in "${spec_files[@]}"; do
+        cmd="$cmd -s $spec_file"
+    done
+    cmd="$cmd -o $out_dir --templates $templates_dir --force"
     
     if [ -n "$upstream" ]; then
         cmd="$cmd --upstream $upstream"
@@ -593,6 +614,7 @@ REGION="$DEFAULT_REGION"
 UPSTREAM=""
 SERVICE_MAP=""
 AUTO_APPROVE="false"
+SPEC_FILES=()
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -601,7 +623,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -s|--spec)
-            SPEC_FILE="$2"
+            SPEC_FILES+=("$2")
             shift 2
             ;;
         -o|--out)
@@ -681,32 +703,32 @@ case "$COMMAND" in
         setup_cloud_credentials "$PLATFORM" "$REGION"
         ;;
     validate)
-        if [ -z "$SPEC_FILE" ]; then
-            log_error "Spec file required for validate command"
+        if [ ${#SPEC_FILES[@]} -eq 0 ]; then
+            log_error "Spec file(s) required for validate command"
             exit 1
         fi
         check_dependencies "$PLATFORM"
-        validate_spec "$SPEC_FILE"
+        validate_spec "${SPEC_FILES[@]}"
         ;;
     generate)
-        if [ -z "$SPEC_FILE" ]; then
-            log_error "Spec file required for generate command"
+        if [ ${#SPEC_FILES[@]} -eq 0 ]; then
+            log_error "Spec file(s) required for generate command"
             exit 1
         fi
         check_dependencies "$PLATFORM"
-        generate_infrastructure "$SPEC_FILE" "$OUT_DIR" "$TEMPLATES_DIR" "$PLATFORM" "$UPSTREAM" "$SERVICE_MAP"
+        generate_infrastructure "$OUT_DIR" "$TEMPLATES_DIR" "$PLATFORM" "$UPSTREAM" "$SERVICE_MAP" "${SPEC_FILES[@]}"
         ;;
     plan)
         check_dependencies "$PLATFORM"
         infrastructure_plan "$OUT_DIR" "$PLATFORM"
         ;;
     deploy)
-        if [ -z "$SPEC_FILE" ]; then
-            log_error "Spec file required for deploy command"
+        if [ ${#SPEC_FILES[@]} -eq 0 ]; then
+            log_error "Spec file(s) required for deploy command"
             exit 1
         fi
         check_dependencies "$PLATFORM"
-        generate_infrastructure "$SPEC_FILE" "$OUT_DIR" "$TEMPLATES_DIR" "$PLATFORM" "$UPSTREAM" "$SERVICE_MAP"
+        generate_infrastructure "$OUT_DIR" "$TEMPLATES_DIR" "$PLATFORM" "$UPSTREAM" "$SERVICE_MAP" "${SPEC_FILES[@]}"
         deploy_infrastructure "$OUT_DIR" "$PLATFORM" "$AUTO_APPROVE"
         ;;
     destroy)

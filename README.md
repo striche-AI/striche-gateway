@@ -4,18 +4,37 @@ A CLI-first TypeScript tool that converts OpenAPI/Swagger specs into ready-to-de
 
 ## 🚀 Features
 
+- **Unified Gateway Architecture**: Single endpoint for multiple microservices with dynamic routing
+- **Multi-Service Support**: Deploy multiple OpenAPI specs as unified or separate services
 - **Multi-Platform Support**: AWS (implemented), GCP & Azure (coming soon)
-- **OpenAPI v3 Compatible**: Parse .yaml and .json specs
+- **OpenAPI v3 Compatible**: Parse .yaml and .json specs with vendor extensions
+- **Rate Limiting**: Built-in support for `x-rate-limit` vendor extension
+- **Service Discovery**: Intelligent service grouping via `x-service` declarations
 - **Zero-Config Deployment**: Generate and deploy with a single command
-- **Infrastructure as Code**: Produces Terraform projects
-- **Extensible Templates**: Platform-specific customization
+- **Infrastructure as Code**: Produces Terraform projects with dynamic templates
+- **Extensible Templates**: Platform-specific customization with Handlebars
 - **Advanced CLI**: Bash script with colored output and validation
 - **Idempotent Operations**: Safe to run multiple times
 
 ## 🏗️ Architecture
 
-Striche Gateway normalizes APIs into a canonical model and renders platform-specific Infrastructure-as-Code:
+Striche Gateway supports two deployment patterns and converts OpenAPI specs into complete cloud infrastructure:
 
+### Deployment Patterns
+
+#### Unified Gateway (Default)
+- **Single API Gateway**: One endpoint serving multiple microservices
+- **Dynamic Routing**: Routes requests to backend services based on path patterns
+- **Consolidated Access**: Single domain with multiple service backends
+- **Ideal for**: Microservices architectures requiring unified access points
+
+#### Separate Services
+- **Individual Gateways**: Each OpenAPI spec gets its own gateway
+- **Service Isolation**: Complete separation between services
+- **Independent Scaling**: Each service can scale independently
+- **Ideal for**: Service-oriented architectures with clear boundaries
+
+### Pipeline Flow
 ```
 OpenAPI Spec → Canonical Model → Platform Templates → Infrastructure Code → Cloud Deployment
 ```
@@ -24,7 +43,7 @@ OpenAPI Spec → Canonical Model → Platform Templates → Infrastructure Code 
 
 | Platform | Status | Services | Templates |
 |----------|--------|----------|-----------|
-| **AWS** | ✅ Ready | API Gateway + Lambda | `/templates/aws/` |
+| **AWS** | ✅ Ready | API Gateway v2 + Dynamic Routing | `/templates/aws/` |
 | **GCP** | 🚧 Coming Soon | Cloud Endpoints + Cloud Run | `/templates/gcp/` |
 | **Azure** | 🚧 Coming Soon | API Management + Functions | `/templates/azure/` |
 
@@ -48,6 +67,92 @@ OpenAPI Spec → Canonical Model → Platform Templates → Infrastructure Code 
 - **Terraform CLI**
 - **Azure CLI** for authentication
 
+## 📝 OpenAPI Vendor Extensions
+
+Striche Gateway supports custom OpenAPI vendor extensions to enable advanced gateway features:
+
+### **x-service**: Service Grouping
+Define service boundaries for unified gateway routing:
+
+```yaml
+# Global service declaration
+openapi: 3.0.3
+info:
+  title: Authentication Service API
+x-service: auth    # Groups all paths under 'auth' service
+
+# Path-level service override
+paths:
+  /admin/users:
+    x-service: admin  # Routes to different service
+    get:
+      summary: Admin user management
+```
+
+### **x-rate-limit**: Rate Limiting
+Configure per-endpoint rate limiting policies:
+
+```yaml
+paths:
+  /login:
+    post:
+      summary: User login
+      x-rate-limit:
+        requests: 10    # 10 requests
+        period: 60      # per 60 seconds  
+        burst: 20       # burst up to 20
+      responses:
+        '200':
+          description: Login successful
+          
+  /register:
+    post:
+      summary: User registration
+      x-rate-limit:
+        requests: 5     # Stricter for registration
+        period: 300     # per 5 minutes
+        burst: 10
+      responses:
+        '201':
+          description: User registered
+```
+
+### **Service Discovery Priority**
+Striche Gateway determines service names using this priority:
+
+1. **Global `x-service`**: Applies to all paths in the spec
+2. **Path-level `x-service`**: Overrides global for specific paths  
+3. **Operation-level `x-service`**: Overrides path-level for specific methods
+4. **Server URL path**: Extracts service name from server URL path segment
+5. **First tag**: Uses first tag from operation tags array
+6. **Path segment**: Uses first path segment as service name
+7. **Fallback**: Uses 'root' as service name
+
+### **Generated Infrastructure**
+These extensions translate to cloud infrastructure:
+
+```yaml
+# OpenAPI with extensions
+x-service: auth
+paths:
+  /login:
+    post:
+      x-rate-limit: { requests: 10, period: 60 }
+```
+
+```hcl
+# Generated Terraform (AWS)
+resource "aws_apigatewayv2_route" "auth_login" {
+  api_id    = aws_apigatewayv2_api.api.id
+  route_key = "POST /login"
+  
+  throttle_settings {
+    rate_limit  = 10
+    burst_limit = 20
+  }
+}
+```
+
 ## ⚡ Quick Start
 
 ### 1. Installation
@@ -70,15 +175,31 @@ export AWS_REGION="eu-west-2"
 ```
 
 ### 3. Deploy Your API
-```bash
-# One-command deployment
-./striche.sh deploy -s specs/payment-service.yaml -p aws --auto-approve
 
-# Step-by-step approach
-./striche.sh validate -s specs/payment-service.yaml
-./striche.sh generate -s specs/payment-service.yaml -p aws
-./striche.sh plan
-./striche.sh deploy -s specs/payment-service.yaml -p aws
+#### Unified Gateway (Multiple Services)
+```bash
+# Deploy multiple services through a unified gateway (default)
+./striche.sh deploy -s specs/auth-service.yaml,specs/payment-service.yaml -p aws --auto-approve
+
+# Step-by-step unified deployment
+./striche.sh validate -s specs/auth-service.yaml,specs/payment-service.yaml
+./striche.sh generate -s specs/auth-service.yaml,specs/payment-service.yaml -p aws
+./striche.sh deploy -s specs/auth-service.yaml,specs/payment-service.yaml -p aws
+```
+
+#### Separate Services
+```bash
+# Deploy as separate individual gateways
+./striche.sh deploy -s specs/payment-service.yaml -p aws --separate --auto-approve
+
+# Multiple specs as separate services
+./striche.sh deploy -s specs/auth-service.yaml,specs/payment-service.yaml -p aws --separate
+```
+
+#### Legacy Single Service
+```bash
+# Traditional single service deployment
+./striche.sh deploy -s specs/payment-service.yaml -p aws --auto-approve
 ```
 
 ### 4. Test and Manage
@@ -114,36 +235,100 @@ export AWS_REGION="eu-west-2"
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `-s, --spec <file>` | OpenAPI spec file path | Required |
+| `-s, --spec <file>` | OpenAPI spec file path (comma-separated for multiple) | Required |
 | `-p, --platform <name>` | Cloud platform (aws, gcp, azure) | `aws` |
 | `-o, --out <dir>` | Output directory | `./out` |
 | `-t, --templates <dir>` | Templates directory | `./templates` |
 | `-r, --region <region>` | Cloud region | `eu-west-2` |
 | `-u, --upstream <url>` | Upstream service URL | From spec |
 | `--service-map <json>` | Service mapping JSON | - |
+| `--unified` | Deploy as unified gateway (default) | `true` |
+| `--separate` | Deploy as separate services | `false` |
 | `--auto-approve` | Skip confirmation prompts | - |
 | `-h, --help` | Show help | - |
 
 ### Examples
 
 ```bash
-# Validate an OpenAPI spec
+# Validate OpenAPI specs
 ./striche.sh validate -s specs/payment-service.yaml
+./striche.sh validate -s specs/auth-service.yaml,specs/payment-service.yaml
 
-# Generate for specific platform and region
-./striche.sh generate -s specs/payment-service.yaml -p aws -r us-east-1
+# Unified Gateway - Multiple services through single endpoint
+./striche.sh deploy -s specs/auth-service.yaml,specs/payment-service.yaml -p aws --auto-approve
+./striche.sh generate -s specs/auth-service.yaml,specs/payment-service.yaml -p aws -r us-east-1
 
-# Deploy with custom upstream
+# Separate Services - Individual gateways
+./striche.sh deploy -s specs/auth-service.yaml,specs/payment-service.yaml -p aws --separate
+./striche.sh deploy -s specs/payment-service.yaml -p aws --separate -r us-west-2
+
+# Custom upstream for single service
 ./striche.sh deploy -s specs/payment-service.yaml -p aws \
   -u https://my-backend.example.com --auto-approve
 
-# Deploy to different platforms (future)
+# Platform-specific deployments (future)
 ./striche.sh deploy -s specs/payment-service.yaml -p gcp -r us-central1
 ./striche.sh deploy -s specs/payment-service.yaml -p azure -r eastus
 
-# Service mapping for multiple services
-./striche.sh deploy -s specs/payment-service.yaml -p aws \
+# Advanced service mapping
+./striche.sh deploy -s specs/payment-service.yaml,specs/auth-service.yaml -p aws \
   --service-map '{"payments":"https://pay.example.com","auth":"https://auth.example.com"}'
+```
+
+### **OpenAPI Vendor Extensions Examples**
+
+```yaml
+# Example: Auth service with rate limiting
+openapi: 3.0.3
+info:
+  title: Authentication Service API
+  version: 1.0.0
+x-service: auth
+
+paths:
+  /login:
+    post:
+      summary: User login
+      x-rate-limit:
+        requests: 10    # 10 login attempts
+        period: 60      # per minute
+        burst: 15       # burst protection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Login successful
+          
+  /register:
+    post:
+      summary: User registration  
+      x-rate-limit:
+        requests: 3     # Stricter for new accounts
+        period: 300     # per 5 minutes
+        burst: 5
+      responses:
+        '201':
+          description: User created
+
+# Example: Multi-service routing
+paths:
+  /payments/process:
+    x-service: payments  # Routes to payment service
+    post:
+      x-rate-limit:
+        requests: 100
+        period: 60
+        
+  /admin/users:
+    x-service: admin     # Routes to admin service
+    get:
+      x-rate-limit:
+        requests: 50
+        period: 60
 ```
 
 ## 📁 Project Structure
@@ -159,12 +344,19 @@ striche-gateway/
 │   └── render/            # Template renderer
 ├── templates/             # Platform templates
 │   ├── aws/              # AWS-specific templates
-│   │   ├── modules/
-│   │   └── root/
+│   │   ├── modules/      # Service module templates
+│   │   │   └── service/  # Dynamic routing templates
+│   │   └── root/         # Root infrastructure templates
 │   ├── gcp/              # GCP templates (future)
 │   └── azure/            # Azure templates (future)
 ├── specs/                # Example OpenAPI specs
+│   ├── auth-service.yaml # Authentication service spec
+│   └── payment-service.yaml # Payment service spec
 └── out/                  # Generated infrastructure (gitignored)
+    ├── main.tf           # Generated root Terraform
+    ├── variables.tf      # Dynamic variables
+    ├── terraform.tfvars  # Service configurations
+    └── modules/          # Generated service modules
 ```
 
 ## 🔧 Development Workflow
@@ -194,6 +386,42 @@ npx ts-node src/cli.ts generate \
 ./striche.sh deploy -s specs/payment-service.yaml
 ```
 
+## 🔄 Unified Gateway Pattern
+
+Striche Gateway's unified mode creates a single API Gateway that routes to multiple backend microservices, solving the "one endpoint for different services" requirement.
+
+### How It Works
+
+1. **Single Gateway**: One API Gateway serves all microservices
+2. **Dynamic Routing**: Routes are mapped to specific upstream services based on path patterns
+3. **Service Resolution**: Each route knows its target backend service
+4. **Consolidated Domain**: All services accessible through one domain
+
+### Example Deployment
+
+```bash
+# Deploy auth and payment services through unified gateway
+./striche.sh deploy -s specs/auth-service.yaml,specs/payment-service.yaml -p aws
+
+# Results in single gateway with routes:
+# https://your-gateway.execute-api.region.amazonaws.com/auth/* → https://api.auth.com/auth/v1
+# https://your-gateway.execute-api.region.amazonaws.com/payments/* → https://api.payment.com/payments/v1
+```
+
+### Generated Infrastructure
+
+- **Single API Gateway**: One HTTP API for all services
+- **Per-Route Integrations**: Each route points to its specific backend
+- **Dynamic Upstream Mapping**: Handlebars templates generate proper service routing
+- **Consolidated Variables**: All service configurations in one place
+
+### Use Cases
+
+- **Microservices Architecture**: Single entry point for distributed services
+- **API Composition**: Combining multiple APIs behind one interface
+- **Service Discovery**: Unified access to backend services
+- **Cross-Service Routing**: Client connects to one gateway, accesses all services
+
 ## 🌍 Multi-Platform Deployment
 
 ### AWS (Current)
@@ -203,10 +431,12 @@ npx ts-node src/cli.ts generate \
 ```
 
 **Resources Created:**
-- API Gateway HTTP API
-- API Gateway Routes (one per endpoint)
-- API Gateway Integrations (HTTP proxy to upstream)
-- API Gateway Stage (auto-deploy)
+- API Gateway HTTP API (v2)
+- API Gateway Routes (dynamic per OpenAPI paths)
+- API Gateway Integrations (HTTP proxy with upstream mapping)
+- API Gateway Stage (auto-deploy with proper routing)
+- Route-specific upstream configurations
+- Dynamic service mapping from OpenAPI specs
 
 ### GCP (Coming Soon)
 ```bash

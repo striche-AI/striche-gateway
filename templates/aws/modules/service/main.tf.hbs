@@ -5,17 +5,26 @@ resource "aws_apigatewayv2_api" "api" {
 }
 
 # Create an integration per route (we map routes by their path)
-# var.routes is a list of objects: { path, methods, id? }
+# var.routes is a list of objects: { path, methods, id?, upstream?, plugins? }
 locals {
   routes_map = { for r in var.routes : "${r.path}::${join("-", r.methods)}" => r }
-
+  
+  # Dynamic upstream mapping generated from route data
+  upstream_map = {
+{{#each services}}
+  {{#each this.routes}}
+    "{{this.path}}::{{#each this.methods}}{{this}}{{#unless @last}}-{{/unless}}{{/each}}" = "{{this.upstream}}"{{#unless @last}},{{/unless}}
+  {{/each}}
+{{/each}}
+  }
 }
 
 resource "aws_apigatewayv2_integration" "integration" {
   for_each                = local.routes_map
   api_id                  = aws_apigatewayv2_api.api.id
   integration_type        = "HTTP_PROXY"
-  integration_uri         = var.upstream
+  # Use the dynamic upstream mapping
+  integration_uri         = local.upstream_map[each.key]
   integration_method      = "ANY"
   payload_format_version  = "1.0"
 }
