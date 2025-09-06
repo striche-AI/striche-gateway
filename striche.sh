@@ -63,6 +63,8 @@ ${YELLOW}OPTIONS:${NC}
     -r, --region <region>     Cloud region (default: ${DEFAULT_REGION})
     -u, --upstream <url>      Upstream service URL
     --service-map <json>      Service mapping JSON
+    --unified                Deploy as unified gateway (single endpoint, default)
+    --separate               Deploy as separate services (multiple endpoints)
     --auto-approve           Skip confirmation prompts
     -h, --help               Show this help
 
@@ -75,6 +77,8 @@ ${YELLOW}EXAMPLES:${NC}
     ./striche.sh validate -s specs/payment-service.yaml
     ./striche.sh generate -s specs/payment-service.yaml -p aws
     ./striche.sh deploy -s specs/payment-service.yaml -p aws --auto-approve
+    ./striche.sh deploy -s specs/auth-service.yaml -s specs/payment-service.yaml --unified --auto-approve
+    ./striche.sh deploy -s specs/auth-service.yaml -s specs/payment-service.yaml --separate --auto-approve
     ./striche.sh deploy -s specs/auth-service.yaml -s specs/payment-service.yaml --service-map '{"auth":"https://auth.company.com","payments":"https://payments.company.com"}'
     ./striche.sh test -s specs/payment-service.yaml
     ./striche.sh setup-cloud -p aws
@@ -366,6 +370,12 @@ generate_infrastructure() {
         cmd="$cmd --service-map '$service_map'"
     fi
     
+    if [ "$SEPARATE" = "true" ]; then
+        cmd="$cmd --separate"
+    elif [ "$UNIFIED" = "true" ]; then
+        cmd="$cmd --unified"
+    fi
+    
     eval $cmd
     log_success "Infrastructure generation completed for platform: $platform"
 }
@@ -614,6 +624,8 @@ REGION="$DEFAULT_REGION"
 UPSTREAM=""
 SERVICE_MAP=""
 AUTO_APPROVE="false"
+UNIFIED="true"
+SEPARATE="false"
 SPEC_FILES=()
 
 while [[ $# -gt 0 ]]; do
@@ -649,6 +661,16 @@ while [[ $# -gt 0 ]]; do
         --service-map)
             SERVICE_MAP="$2"
             shift 2
+            ;;
+        --unified)
+            UNIFIED="true"
+            SEPARATE="false"
+            shift
+            ;;
+        --separate)
+            SEPARATE="true"
+            UNIFIED="false"
+            shift
             ;;
         --auto-approve)
             AUTO_APPROVE="true"
