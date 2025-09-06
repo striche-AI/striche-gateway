@@ -24,8 +24,11 @@ export function mapOpenApiToCanonical(api: any, opts: MapOpts = {}): CanonicalMo
     // determine service name by vendor extension, server URL, tag, or first segment
     let serviceName = undefined as string | undefined;
 
+    // 0) global-level x-service (highest priority)
+    if (api && api["x-service"]) serviceName = String(api["x-service"]);
+
     // 1) path-level x-service
-    if (pathItem && pathItem["x-service"]) serviceName = String(pathItem["x-service"]);
+    if (!serviceName && pathItem && pathItem["x-service"]) serviceName = String(pathItem["x-service"]);
 
     // 2) operation-level x-service (take first op that has it)
     if (!serviceName) {

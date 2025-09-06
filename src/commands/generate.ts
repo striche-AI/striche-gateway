@@ -3,7 +3,7 @@ import path from "path";
 import fs from "fs-extra";
 import { parseSpecAndGetOperations, NormalizedSpec } from "../parser/swagger.parser";
 import { mapOpenApiToCanonical } from "../model/mapper";
-import { CanonicalModel } from "../model/canonical";
+import { CanonicalModel, CanonicalService, CanonicalRoute } from "../model/canonical";
 import { buildTerraformContext } from "../adapters/terraform-aws/context-builder";
 import { loadTemplates } from "../render/template-loader";
 import { renderAll } from "../render/renderer";
@@ -22,23 +22,21 @@ export async function generateFromSpec(opts: GenerateOpts) {
   const { specPaths, outDir, templateDir = path.resolve(process.cwd(), "templates"), serviceMap, cliUpstream, force } = opts;
   logger.info(`Generate: specs=${specPaths.join(", ")} -> out=${outDir}, templates=${templateDir}`);
 
-  // 1) parse and normalize each spec and merge into a single "normalized" object
-  // For simplicity we will merge the normalized.raw documents by combining paths/components/servers/tags.
-  const normalizedDocs: NormalizedSpec[] = [];
+  // 1) Process each spec individually to preserve global x-service declarations
+  const canonicalModels: CanonicalModel[] = [];
   for (const p of specPaths) {
     logger.info("Parsing spec:", p);
     const parsed = await parseSpecAndGetOperations(p);
-    normalizedDocs.push(parsed.normalized);
+    // Map each spec to canonical model individually
+    const canonical: CanonicalModel = mapOpenApiToCanonical(parsed.normalized, { serviceMap });
+    canonicalModels.push(canonical);
   }
 
-  // Merge normalized docs into a single pseudo-spec object (simple merge)
-  const merged = mergeNormalizedSpecs(normalizedDocs);
-
-  // 2) Map to canonical model (provide serviceMap to mapper)
-  const canonical: CanonicalModel = mapOpenApiToCanonical(merged, { serviceMap });
+  // 2) Merge canonical models instead of merging specs
+  const mergedCanonical = mergeCanonicalModels(canonicalModels);
 
   // 3) Build terraform context (resolver will use serviceMap, cliUpstream, or canonical upstream)
-  const context = buildTerraformContext(canonical, { serviceMap, cliUpstream });
+  const context = buildTerraformContext(mergedCanonical, { serviceMap, cliUpstream });
 
   // 4) ensure outDir
   if (await fs.pathExists(outDir) && !force) {
@@ -85,4 +83,32 @@ function mergeNormalizedSpecs(docs: NormalizedSpec[]): NormalizedSpec {
 
   base.raw = base.raw || {}; // keep shape
   return base;
+}
+
+// Merge multiple canonical models into a single canonical model
+function mergeCanonicalModels(models: CanonicalModel[]): CanonicalModel {
+  if (!models.length) throw new Error("No canonical models provided");
+  
+  const allServices: CanonicalService[] = [];
+  const allRoutes: CanonicalRoute[] = [];
+  const serviceNamesSeen = new Set<string>();
+  
+  for (const model of models) {
+    // Add services (avoid duplicates by name)
+    for (const service of model.services) {
+      if (!serviceNamesSeen.has(service.name)) {
+        allServices.push(service);
+        serviceNamesSeen.add(service.name);
+      }
+    }
+    
+    // Add all routes
+    allRoutes.push(...model.routes);
+  }
+  
+  return {
+    services: allServices,
+    routes: allRoutes,
+    metadata: models[0]?.metadata || {}
+  };
 }

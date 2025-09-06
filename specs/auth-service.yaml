@@ -7,6 +7,8 @@ info:
     name: API Support
     email: support@example.com
 
+x-service: auth
+
 servers:
   - url: https://api.example.com/auth/v1
     description: Production server
