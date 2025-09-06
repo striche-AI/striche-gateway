@@ -13,7 +13,7 @@ locals {
   upstream_map = {
 {{#each services}}
   {{#each this.routes}}
-    "{{this.path}}::{{#each this.methods}}{{this}}{{#unless @last}}-{{/unless}}{{/each}}" = "{{this.upstream}}"{{#unless @last}},{{/unless}}
+    "{{this.path}}::{{#each this.methods}}{{this}}{{#unless @last}}-{{/unless}}{{/each}}" = {{#if this.upstream}}"{{this.upstream}}"{{else}}"{{../upstream}}"{{/if}}{{#unless @last}},{{/unless}}
   {{/each}}
 {{/each}}
   }
