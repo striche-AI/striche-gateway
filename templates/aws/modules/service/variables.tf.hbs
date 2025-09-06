@@ -1,0 +1,26 @@
+variable "name" {
+  type = string
+}
+
+variable "upstream" {
+  type = string
+}
+
+variable "routes" {
+  type = list(object({
+    path    = string
+    methods = list(string)
+    id      = optional(string)
+  }))
+  default = []
+}
+
+variable "default_rate_limit_rps" {
+  type    = number
+  default = {{default_rate_limit_rps}}
+}
+
+variable "default_rate_limit_burst" {
+  type    = number
+  default = {{default_rate_limit_burst}}
+}

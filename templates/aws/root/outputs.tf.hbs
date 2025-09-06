@@ -1,0 +1,8 @@
+# expose all module endpoints as a single map
+output "api_endpoints" {
+  value = {
+{{#each services}}
+  {{@key}} = module.{{@key}}.api_endpoint
+{{/each}}
+  }
+}

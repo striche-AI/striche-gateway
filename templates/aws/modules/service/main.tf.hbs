@@ -1,0 +1,45 @@
+# Create an HTTP API for this service
+resource "aws_apigatewayv2_api" "api" {
+  name          = "${var.name}-api"
+  protocol_type = "HTTP"
+}
+
+# Create an integration per route (we map routes by their path)
+# var.routes is a list of objects: { path, methods, id? }
+locals {
+  routes_map = { for r in var.routes : "${r.path}::${join("-", r.methods)}" => r }
+
+}
+
+resource "aws_apigatewayv2_integration" "integration" {
+  for_each                = local.routes_map
+  api_id                  = aws_apigatewayv2_api.api.id
+  integration_type        = "HTTP_PROXY"
+  integration_uri         = var.upstream
+  integration_method      = "ANY"
+  payload_format_version  = "1.0"
+}
+
+# Route per path+method. We choose the first method listed as the route_key's method.
+resource "aws_apigatewayv2_route" "route" {
+  for_each = local.routes_map
+
+  api_id    = aws_apigatewayv2_api.api.id
+  # route_key requires "<METHOD> <PATH>"
+  route_key = "${each.value.methods[0]} ${each.value.path}"
+  target    = "integrations/${aws_apigatewayv2_integration.integration[each.key].id}"
+
+  # If you need authorization/authorizer per-route, extend here with conditions.
+}
+
+# Stage (auto-deploy)
+resource "aws_apigatewayv2_stage" "default" {
+  api_id      = aws_apigatewayv2_api.api.id
+  name        = "$default"
+  auto_deploy = true
+
+  default_route_settings {
+    throttling_rate_limit  = var.default_rate_limit_rps
+    throttling_burst_limit = var.default_rate_limit_burst
+  }
+}
