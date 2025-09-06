@@ -1,0 +1,30 @@
+# region for AWS provider
+variable "aws_region" {
+  type    = string
+  default = "{{aws_region_default}}"
+}
+
+# services map produced by the generator:
+# map(service_name -> object({ upstream = string, routes = list(object({ path, methods })) }))
+variable "services" {
+  type = map(object({
+    upstream = string
+    routes = list(object({
+      path    = string
+      methods = list(string)
+      id      = optional(string)
+    }))
+  }))
+  default = {}
+}
+
+# default rate limit values (module will accept these but can be overridden per module)
+variable "default_rate_limit_rps" {
+  type    = number
+  default = {{default_rate_limit_rps}}
+}
+
+variable "default_rate_limit_burst" {
+  type    = number
+  default = {{default_rate_limit_burst}}
+}

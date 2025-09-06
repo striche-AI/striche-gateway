@@ -1,0 +1,4 @@
+#!/bin/bash
+# Alias script for easier access
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+"$SCRIPT_DIR/striche.sh" "$@"

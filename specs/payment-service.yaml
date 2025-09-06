@@ -14,7 +14,7 @@ servers:
     description: Staging server
 
 paths:
-  /payment-methods:
+  /payment-methodsx:
     get:
       summary: List payment methods
       description: Retrieve all payment methods for the authenticated user

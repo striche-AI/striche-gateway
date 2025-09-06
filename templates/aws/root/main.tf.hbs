@@ -1,0 +1,17 @@
+# instantiate a module per service using the services var
+# modules live in ./modules/service
+
+{{#each services}}
+module "{{@key}}" {
+  source = "./modules/service"
+
+  # pass the name and read routes/upstream from var.services so tfvars can drive the values
+  name     = "{{@key}}"
+  upstream = var.services["{{@key}}"].upstream
+  routes   = var.services["{{@key}}"].routes
+
+  # optional: pass global defaults
+  default_rate_limit_rps   = var.default_rate_limit_rps
+  default_rate_limit_burst = var.default_rate_limit_burst
+}
+{{/each}}
