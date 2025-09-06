@@ -16,11 +16,13 @@ export type GenerateOpts = {
   serviceMap?: Record<string, string>;
   cliUpstream?: string;           // global upstream override (applies to all services)
   force?: boolean;
+  unified?: boolean;              // true = single gateway with path routing, false = separate gateways per service
 };
 
 export async function generateFromSpec(opts: GenerateOpts) {
-  const { specPaths, outDir, templateDir = path.resolve(process.cwd(), "templates"), serviceMap, cliUpstream, force } = opts;
+  const { specPaths, outDir, templateDir = path.resolve(process.cwd(), "templates"), serviceMap, cliUpstream, force, unified = true } = opts;
   logger.info(`Generate: specs=${specPaths.join(", ")} -> out=${outDir}, templates=${templateDir}`);
+  logger.info(`Deployment mode: ${unified ? 'unified gateway' : 'separate services'}`);
 
   // 1) Process each spec individually to preserve global x-service declarations
   const canonicalModels: CanonicalModel[] = [];
@@ -32,8 +34,10 @@ export async function generateFromSpec(opts: GenerateOpts) {
     canonicalModels.push(canonical);
   }
 
-  // 2) Merge canonical models instead of merging specs
-  const mergedCanonical = mergeCanonicalModels(canonicalModels);
+  // 2) Merge canonical models - behavior changes based on unified mode
+  const mergedCanonical = unified ? 
+    mergeCanonicalModelsUnified(canonicalModels) : 
+    mergeCanonicalModels(canonicalModels);
 
   // 3) Build terraform context (resolver will use serviceMap, cliUpstream, or canonical upstream)
   const context = buildTerraformContext(mergedCanonical, { serviceMap, cliUpstream });
@@ -50,7 +54,7 @@ export async function generateFromSpec(opts: GenerateOpts) {
   // 6) render
   await renderAll(templates, context, outDir);
 
-  return { outDir, services: Object.keys(context.services || {}) };
+  return { outDir, services: Object.keys(context.services || {}), unified };
 }
 
 // Simple merge helper for normalized specs (paths/components/servers/tags)
@@ -85,7 +89,7 @@ function mergeNormalizedSpecs(docs: NormalizedSpec[]): NormalizedSpec {
   return base;
 }
 
-// Merge multiple canonical models into a single canonical model
+// Merge multiple canonical models into a single canonical model (separate services)
 function mergeCanonicalModels(models: CanonicalModel[]): CanonicalModel {
   if (!models.length) throw new Error("No canonical models provided");
   
@@ -110,5 +114,64 @@ function mergeCanonicalModels(models: CanonicalModel[]): CanonicalModel {
     services: allServices,
     routes: allRoutes,
     metadata: models[0]?.metadata || {}
+  };
+}
+
+// Merge multiple canonical models into a unified gateway (single service with all routes)
+function mergeCanonicalModelsUnified(models: CanonicalModel[]): CanonicalModel {
+  if (!models.length) throw new Error("No canonical models provided");
+  
+  // Create a single unified service
+  const unifiedService: CanonicalService = {
+    id: "svc-unified-gateway",
+    name: "unified-gateway", 
+    upstreamUrl: "", // Will be resolved by context builder
+    description: "Unified API Gateway for all microservices"
+  };
+  
+  // Collect all routes and modify them for unified deployment
+  const allRoutes: CanonicalRoute[] = [];
+  const serviceUpstreams = new Map<string, string>();
+  
+  for (const model of models) {
+    // Collect upstream URLs from each service
+    for (const service of model.services) {
+      if (service.upstreamUrl) {
+        serviceUpstreams.set(service.name, service.upstreamUrl);
+      }
+    }
+    
+    // Add all routes but point them to the unified service
+    for (const route of model.routes) {
+      // Find the original service name to determine upstream
+      const originalService = model.services.find(s => s.id === route.serviceId);
+      const serviceName = originalService?.name || 'unknown';
+      
+      const unifiedRoute: CanonicalRoute = {
+        ...route,
+        id: `${route.id}-unified`,
+        serviceId: unifiedService.id,
+        // Store upstream routing info in plugins
+        plugins: {
+          ...route.plugins,
+          'upstream-routing': {
+            originalServiceName: serviceName,
+            upstreamUrl: serviceUpstreams.get(serviceName)
+          }
+        }
+      };
+      
+      allRoutes.push(unifiedRoute);
+    }
+  }
+  
+  return {
+    services: [unifiedService],
+    routes: allRoutes,
+    metadata: {
+      unified: true,
+      serviceUpstreams: Object.fromEntries(serviceUpstreams),
+      originalServices: models.flatMap(m => m.services.map(s => s.name))
+    }
   };
 }

@@ -7,10 +7,10 @@ info:
     name: API Support
     email: support@example.com
 
-x-service: payments
+x-service: payments-srv
 
 servers:
-  - url: https://api.example.com/payments/v1
+  - url: https://api.paymentx.com/payments/v1
     description: Production server
   - url: https://staging-api.example.com/payments/v1
     description: Staging server

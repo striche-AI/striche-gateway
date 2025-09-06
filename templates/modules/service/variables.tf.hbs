@@ -8,9 +8,10 @@ variable "upstream" {
 
 variable "routes" {
   type = list(object({
-    path    = string
-    methods = list(string)
-    id      = optional(string)
+    path     = string
+    methods  = list(string)
+    id       = optional(string)
+    upstream = optional(string) # for unified mode - per-route upstream
   }))
   default = []
 }

@@ -10,7 +10,7 @@ info:
 x-service: auth
 
 servers:
-  - url: https://api.example.com/auth/v1
+  - url: https://api.auth.com/auth/v1
     description: Production server
   - url: https://staging-api.example.com/auth/v1
     description: Staging server
